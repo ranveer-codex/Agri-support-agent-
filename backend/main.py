@@ -145,12 +145,10 @@ class ChatRequest(BaseModel):
 
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
-    user_message = req.message
-    
-    # Temporary test response
-    return {
-        "reply": f"You said: {user_message}"
-    }
+    try:
+        return {"reply": f"You said: {req.message}"}
+    except Exception as e:
+        return {"error": str(e)}
 
 # HTTP Endpoints
 @app.get("/health")
