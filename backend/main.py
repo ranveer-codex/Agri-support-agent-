@@ -5,6 +5,7 @@ import logging
 import os
 from datetime import datetime
 from dotenv import load_dotenv
+from pydantic import BaseModel
 
 load_dotenv()
 
@@ -139,6 +140,17 @@ class ConversationManager:
         
         return recommendations[:3]  # Return top 3 recommendations
 
+class ChatRequest(BaseModel):
+    message: str
+
+@app.post("/api/chat")
+async def chat(req: ChatRequest):
+    user_message = req.message
+    
+    # Temporary test response
+    return {
+        "reply": f"You said: {user_message}"
+    }
 
 # HTTP Endpoints
 @app.get("/health")
