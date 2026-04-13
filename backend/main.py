@@ -143,6 +143,10 @@ class ConversationManager:
 class ChatRequest(BaseModel):
     message: str
 
+@app.get("/")
+def root():
+    return {"status": "API is running"}
+
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
     try:
@@ -153,7 +157,7 @@ async def chat(req: ChatRequest):
 # HTTP Endpoints
 @app.get("/health")
 async def health_check():
-    return {"status": "ok"}
+    return {"status": "ok" True}
 
 
 @app.post("/api/conversations")
