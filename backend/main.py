@@ -157,7 +157,7 @@ async def chat(req: ChatRequest):
 # HTTP Endpoints
 @app.get("/health")
 async def health_check():
-    return {"status": "ok" True}
+    return {"status": "ok"}
 
 
 @app.post("/api/conversations")
