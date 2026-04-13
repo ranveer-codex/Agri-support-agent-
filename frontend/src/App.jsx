@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE = 'https://agri-support-agent-production.up.railway.app';
 
 export default function App() {
   const [conversationId, setConversationId] = useState(null);
@@ -36,7 +36,7 @@ export default function App() {
     if (!conversationId) return;
     const connectWebSocket = () => {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//localhost:8000/ws/chat/${conversationId}`;
+      const wsUrl = `wss://agri-support-agent-production.up.railway.app/ws/chat/${conversationId}`;
       const ws = new WebSocket(wsUrl);
       ws.onopen = () => {
         setConnected(true);
