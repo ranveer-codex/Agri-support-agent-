@@ -79,25 +79,6 @@ FOLLOW_UPS = [
 ]
 
 # Safe reply generation
-try:
-    base_reply = generate_smart_reply(user_message)
-except Exception as e:
-    logger.error(f"Fallback generation error: {e}")
-    base_reply = "I'm here to help with your crop issues. Could you provide more details?"
-
-# Context-aware follow-up
-recs = conv.get_recommendations(user_message)
-
-if recs:
-    follow_up = "I've also found some products that might help."
-else:
-    follow_up = random.choice(FOLLOW_UPS)
-
-# Final response
-fallback = base_reply if not follow_up else f"{base_reply}\n\n{follow_up}"
-
-self.add_message("assistant", fallback)
-return fallback
 
 # =============================
 # GENERATE SMART REPLY
@@ -170,30 +151,6 @@ class ConversationManager:
             "timestamp": datetime.now().isoformat()
         })
 
-    def get_claude_response(self, user_message: str):
-        self.add_message("user", user_message)
-
-        if client:
-            try:
-                response = client.messages.create(
-                    model="claude-3-5-sonnet-20241022",
-                    max_tokens=500,
-                    system=SYSTEM_PROMPT,
-                    messages=[{"role": m["role"], "content": m["content"]} for m in self.messages]
-                )
-
-                text = response.content[0].text
-                self.add_message("assistant", text)
-                return text
-
-            except Exception as e:
-                logger.error(f"Claude API error: {e}")
-
-        # fallback (safe)
-        fallback = f"{generate_smart_reply(user_message)}\n\nLet me know if you'd like product suggestions."
-        self.add_message("assistant", fallback)
-        return fallback
-
     def get_recommendations(self, user_message):
         msg = user_message.lower()
         recs = []
@@ -203,6 +160,48 @@ class ConversationManager:
                 recs.extend(items)
 
         return recs[:3]
+
+    def get_claude_response(self, user_message: str):
+        self.add_message("user", user_message)
+
+        # Try Claude API
+        if client:
+            try:
+                response = client.messages.create(
+                    model="claude-3-5-sonnet-20241022",
+                    max_tokens=500,
+                    system=SYSTEM_PROMPT,
+                    messages=[
+                        {"role": m["role"], "content": m["content"]}
+                        for m in self.messages
+                    ]
+                )
+
+                text = response.content[0].text
+                self.add_message("assistant", text)
+                return text
+
+            except Exception as e:
+                logger.error(f"Claude API error: {e}")
+
+        # Fallback
+        try:
+            base_reply = generate_smart_reply(user_message)
+        except Exception as e:
+            logger.error(f"Fallback error: {e}")
+            base_reply = "I'm here to help with your crops."
+
+        recs = self.get_recommendations(user_message)
+
+        if recs:
+            follow_up = "I've also found some products that might help."
+        else:
+            follow_up = random.choice(FOLLOW_UPS)
+
+        fallback = base_reply if not follow_up else f"{base_reply}\n\n{follow_up}"
+
+        self.add_message("assistant", fallback)
+        return fallback
 
 # =============================
 # ROUTES
