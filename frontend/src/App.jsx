@@ -1,41 +1,40 @@
-import React, { useState, useEffect, useRef } from 'react';
-import './App.css';
+import React, { useState, useEffect, useRef } from "react";
+import "./App.css";
 
-const API_BASE = 'https://agri-support-agent-production.up.railway.app';
+const API_BASE = "https://agri-support-agent-production.up.railway.app";
 
 export default function App() {
   const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [input, setInput] = useState("");
   const [conversationId, setConversationId] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [isReady, setIsReady] = useState(false);
+  const [error, setError] = useState(null);
 
   const messagesEndRef = useRef(null);
 
-  // 🔹 Initialize conversation
+  // 🔹 Init conversation
   useEffect(() => {
     const initConversation = async () => {
       try {
         const customerId = `user_${Math.random().toString(36).substring(2, 9)}`;
 
-        const response = await fetch(
+        const res = await fetch(
           `${API_BASE}/api/conversations?customer_id=${customerId}`,
           { method: "POST" }
         );
 
-        const data = await response.json();
+        const data = await res.json();
 
-        if (!response.ok || !data.conversation_id) {
-          throw new Error("Failed to create conversation");
+        if (!res.ok || !data.conversation_id) {
+          throw new Error("Failed to initialize");
         }
 
         setConversationId(data.conversation_id);
         setIsReady(true);
-
       } catch (err) {
-        console.error("Init error:", err);
-        setError("Failed to initialize chat. Please refresh.");
+        console.error(err);
+        setError("Failed to connect to backend.");
       }
     };
 
@@ -44,7 +43,7 @@ export default function App() {
 
   // 🔹 Auto scroll
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   // 🔹 Send message
@@ -55,17 +54,17 @@ export default function App() {
 
     const userMessage = input.trim();
 
-    setMessages(prev => [
+    setMessages((prev) => [
       ...prev,
-      { role: 'user', content: userMessage }
+      { role: "user", content: userMessage }
     ]);
 
-    setInput('');
+    setInput("");
     setIsLoading(true);
     setError(null);
 
     try {
-      const response = await fetch(`${API_BASE}/api/chat`, {
+      const res = await fetch(`${API_BASE}/api/chat`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -76,20 +75,19 @@ export default function App() {
         })
       });
 
-      const data = await response.json();
-      console.log("API RESPONSE:", data);
+      const data = await res.json();
 
-      setMessages(prev => [
+      setMessages((prev) => [
         ...prev,
         {
-          role: 'assistant',
-          content: data.reply || "No response from server"
+          role: "assistant",
+          content: data.reply || "No response",
+          recommendations: data.recommendations || []
         }
       ]);
-
     } catch (err) {
-      console.error("Chat error:", err);
-      setError("Failed to connect to server");
+      console.error(err);
+      setError("Server connection failed.");
     }
 
     setIsLoading(false);
@@ -99,41 +97,61 @@ export default function App() {
     <div className="app">
       <div className="chat-container">
 
-        {/* 🔹 Header */}
+        {/* 🔹 HEADER */}
         <div className="chat-header">
           <div className="header-content">
-            <h1>Agrochemical Support</h1>
+            <h1>🌱 Agro Advisory System</h1>
             <p className="status">
               {isReady ? "🟢 Ready" : "🟡 Connecting..."}
             </p>
           </div>
         </div>
 
-        {/* 🔹 Messages */}
+        {/* 🔹 MESSAGES */}
         <div className="messages-area">
           {messages.length === 0 && (
             <div className="welcome-message">
-              <h2>Welcome to Support</h2>
-              <p>Ask us anything about our products.</p>
+              <h2>Smart Crop Assistance</h2>
+              <p>Ask about pests, diseases, fertilizers, or crop issues.</p>
             </div>
           )}
 
           {messages.map((msg, idx) => (
             <div key={idx} className={`message ${msg.role}`}>
-              <div className="message-content">{msg.content}</div>
+              <div className="message-content">
+                {msg.content}
+
+                {/* 🔥 PRODUCT CARDS */}
+                {msg.recommendations?.length > 0 && (
+                  <div className="product-list">
+                    {msg.recommendations.map((p, i) => (
+                      <div key={i} className="product-card">
+                        <h4>{p.name}</h4>
+                        {p.usage && <p><b>Usage:</b> {p.usage}</p>}
+                        {p.target && <p><b>Target:</b> {p.target}</p>}
+                        <button className="dealer-btn">
+                          Contact Dealer
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           ))}
 
           {isLoading && (
             <div className="message assistant">
-              <div className="message-content">Typing...</div>
+              <div className="message-content typing">
+                Typing...
+              </div>
             </div>
           )}
 
           <div ref={messagesEndRef} />
         </div>
 
-        {/* 🔹 Error */}
+        {/* 🔹 ERROR */}
         {error && (
           <div className="error-banner">
             {error}
@@ -141,16 +159,18 @@ export default function App() {
           </div>
         )}
 
-        {/* 🔹 Input */}
+        {/* 🔹 INPUT */}
         <form onSubmit={handleSendMessage} className="input-form">
           <input
+            className="message-input"
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Type your question..."
+            placeholder="Describe your crop issue..."
             disabled={!isReady || isLoading}
           />
           <button
+            className="send-button"
             type="submit"
             disabled={!isReady || isLoading || !input.trim()}
           >
