@@ -13,7 +13,7 @@ export default function App() {
 
   const messagesEndRef = useRef(null);
 
-  // 🔹 Init conversation
+  // INIT
   useEffect(() => {
     const initConversation = async () => {
       try {
@@ -33,7 +33,6 @@ export default function App() {
         setConversationId(data.conversation_id);
         setIsReady(true);
       } catch (err) {
-        console.error(err);
         setError("Failed to connect to backend.");
       }
     };
@@ -41,12 +40,12 @@ export default function App() {
     initConversation();
   }, []);
 
-  // 🔹 Auto scroll
+  // AUTO SCROLL
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // 🔹 Send message
+  // SEND
   const handleSendMessage = async (e) => {
     e.preventDefault();
 
@@ -56,12 +55,15 @@ export default function App() {
 
     setMessages((prev) => [
       ...prev,
-      { role: "user", content: userMessage }
+      {
+        role: "user",
+        content: userMessage,
+        time: new Date().toLocaleTimeString()
+      }
     ]);
 
     setInput("");
     setIsLoading(true);
-    setError(null);
 
     try {
       const res = await fetch(`${API_BASE}/api/chat`, {
@@ -82,11 +84,11 @@ export default function App() {
         {
           role: "assistant",
           content: data.reply || "No response",
-          recommendations: data.recommendations || []
+          recommendations: data.recommendations || [],
+          time: new Date().toLocaleTimeString()
         }
       ]);
     } catch (err) {
-      console.error(err);
       setError("Server connection failed.");
     }
 
@@ -97,7 +99,7 @@ export default function App() {
     <div className="app">
       <div className="chat-container">
 
-        {/* 🔹 HEADER */}
+        {/* HEADER */}
         <div className="chat-header">
           <div className="header-content">
             <h1>🌱 Agro Advisory System</h1>
@@ -107,35 +109,46 @@ export default function App() {
           </div>
         </div>
 
-        {/* 🔹 MESSAGES */}
+        {/* CHAT */}
         <div className="messages-area">
+
           {messages.length === 0 && (
             <div className="welcome-message">
               <h2>Smart Crop Assistance</h2>
-              <p>Ask about pests, diseases, fertilizers, or crop issues.</p>
+              <p>Try: "pest in rice" or "fungus in wheat"</p>
             </div>
           )}
 
           {messages.map((msg, idx) => (
             <div key={idx} className={`message ${msg.role}`}>
+
               <div className="message-content">
                 {msg.content}
 
-                {/* 🔥 PRODUCT CARDS */}
+                <div className="timestamp">{msg.time}</div>
+
+                {/* PRODUCT SECTION */}
                 {msg.recommendations?.length > 0 && (
-                  <div className="product-list">
-                    {msg.recommendations.map((p, i) => (
-                      <div key={i} className="product-card">
-                        <h4>{p.name}</h4>
-                        {p.usage && <p><b>Usage:</b> {p.usage}</p>}
-                        {p.target && <p><b>Target:</b> {p.target}</p>}
-                        <button className="dealer-btn">
-                          Contact Dealer
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                  <>
+                    <div className="product-title">
+                      Recommended Products
+                    </div>
+
+                    <div className="product-list">
+                      {msg.recommendations.map((p, i) => (
+                        <div key={i} className="product-card">
+                          <h4>{p.name}</h4>
+                          {p.usage && <p><b>Usage:</b> {p.usage}</p>}
+                          {p.target && <p><b>Target:</b> {p.target}</p>}
+                          <button className="dealer-btn">
+                            Get Product
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </>
                 )}
+
               </div>
             </div>
           ))}
@@ -143,7 +156,7 @@ export default function App() {
           {isLoading && (
             <div className="message assistant">
               <div className="message-content typing">
-                Typing...
+                Thinking...
               </div>
             </div>
           )}
@@ -151,7 +164,7 @@ export default function App() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* 🔹 ERROR */}
+        {/* ERROR */}
         {error && (
           <div className="error-banner">
             {error}
@@ -159,22 +172,21 @@ export default function App() {
           </div>
         )}
 
-        {/* 🔹 INPUT */}
+        {/* INPUT */}
         <form onSubmit={handleSendMessage} className="input-form">
           <input
             className="message-input"
-            type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Describe your crop issue..."
             disabled={!isReady || isLoading}
           />
+
           <button
             className="send-button"
-            type="submit"
             disabled={!isReady || isLoading || !input.trim()}
           >
-            Send
+            {isLoading ? "..." : "Send"}
           </button>
         </form>
 
