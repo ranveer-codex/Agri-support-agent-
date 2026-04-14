@@ -8,25 +8,61 @@ export default function App() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [conversationId, setConversationId] = useState(null);
+  const [isReady, setIsReady] = useState(false);
+
   const messagesEndRef = useRef(null);
 
+  // 🔹 Initialize conversation
+  useEffect(() => {
+    const initConversation = async () => {
+      try {
+        const customerId = `user_${Math.random().toString(36).substring(2, 9)}`;
+
+        const response = await fetch(
+          `${API_BASE}/api/conversations?customer_id=${customerId}`,
+          { method: "POST" }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok || !data.conversation_id) {
+          throw new Error("Failed to create conversation");
+        }
+
+        setConversationId(data.conversation_id);
+        setIsReady(true);
+
+      } catch (err) {
+        console.error("Init error:", err);
+        setError("Failed to initialize chat. Please refresh.");
+      }
+    };
+
+    initConversation();
+  }, []);
+
+  // 🔹 Auto scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // 🔹 Send message
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+
+    if (!input.trim() || isLoading || !conversationId) return;
 
     const userMessage = input.trim();
-    setInput('');
-    setIsLoading(true);
-    setError(null);
 
     setMessages(prev => [
       ...prev,
       { role: 'user', content: userMessage }
     ]);
+
+    setInput('');
+    setIsLoading(true);
+    setError(null);
 
     try {
       const response = await fetch(`${API_BASE}/api/chat`, {
@@ -34,7 +70,10 @@ export default function App() {
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ message: userMessage })
+        body: JSON.stringify({
+          message: userMessage,
+          conversation_id: conversationId
+        })
       });
 
       const data = await response.json();
@@ -42,11 +81,14 @@ export default function App() {
 
       setMessages(prev => [
         ...prev,
-        { role: 'assistant', content: data.reply || JSON.stringify(data) }
+        {
+          role: 'assistant',
+          content: data.reply || "No response from server"
+        }
       ]);
 
     } catch (err) {
-      console.error(err);
+      console.error("Chat error:", err);
       setError("Failed to connect to server");
     }
 
@@ -56,13 +98,18 @@ export default function App() {
   return (
     <div className="app">
       <div className="chat-container">
+
+        {/* 🔹 Header */}
         <div className="chat-header">
           <div className="header-content">
             <h1>Agrochemical Support</h1>
-            <p className="status">🟢 Ready</p>
+            <p className="status">
+              {isReady ? "🟢 Ready" : "🟡 Connecting..."}
+            </p>
           </div>
         </div>
 
+        {/* 🔹 Messages */}
         <div className="messages-area">
           {messages.length === 0 && (
             <div className="welcome-message">
@@ -86,6 +133,7 @@ export default function App() {
           <div ref={messagesEndRef} />
         </div>
 
+        {/* 🔹 Error */}
         {error && (
           <div className="error-banner">
             {error}
@@ -93,18 +141,23 @@ export default function App() {
           </div>
         )}
 
+        {/* 🔹 Input */}
         <form onSubmit={handleSendMessage} className="input-form">
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Type your question..."
-            disabled={isLoading}
+            disabled={!isReady || isLoading}
           />
-          <button type="submit" disabled={isLoading || !input.trim()}>
+          <button
+            type="submit"
+            disabled={!isReady || isLoading || !input.trim()}
+          >
             Send
           </button>
         </form>
+
       </div>
     </div>
   );
