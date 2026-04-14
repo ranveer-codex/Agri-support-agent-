@@ -1,20 +1,17 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import datetime
 import logging
-import os
-import json
-from dotenv import load_dotenv
+import time
 import random
 
 # =============================
 # INITIAL SETUP
 # =============================
 
-load_dotenv()
-
-app = FastAPI(title="Agrochemical Support Agent", version="1.1.0")
+app = FastAPI(title="Agrochemical Support Agent", version="2.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -29,39 +26,33 @@ logger = logging.getLogger(__name__)
 
 MAX_CONVERSATIONS = 500
 conversations = {}
-
-# =============================
-# AI SETUP
-# =============================
-
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-
-try:
-    import anthropic
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
-except Exception as e:
-    logger.warning(f"Anthropic init failed: {e}")
-    client = None
-
-SYSTEM_PROMPT = """
-You are an agrochemical support assistant.
-Help with pest control, fertilizers, crop diseases, and farming practices.
-Give clear, practical advice and suggest products when useful.
-"""
+rate_limit_store = {}
 
 # =============================
 # PRODUCT DATABASE
 # =============================
 
 PRODUCTS = {
-    "pest": [{"name": "PestGuard Pro"}, {"name": "BugShield"}],
-    "fertilizer": [{"name": "NutriMax"}, {"name": "GrowthBoost"}],
-    "fungus": [{"name": "FungaStop"}],
-    "weed": [{"name": "WeedKill"}],
+    "pest": [
+        {
+            "name": "AgroAsian PestX",
+            "usage": "2ml per liter of water",
+            "target": "aphids, caterpillars",
+            "crop": ["wheat", "rice"]
+        }
+    ],
+    "fungus": [
+        {
+            "name": "AgroAsian FungiStop",
+            "usage": "1.5ml per liter",
+            "target": "leaf spots, mildew",
+            "crop": ["wheat"]
+        }
+    ]
 }
 
 # =============================
-# MODELS
+# REQUEST MODEL
 # =============================
 
 class ChatRequest(BaseModel):
@@ -69,139 +60,120 @@ class ChatRequest(BaseModel):
     conversation_id: str
 
 # =============================
-# GENERATE SMART REPLY
+# SECURITY LAYER
 # =============================
+
+def sanitize_input(text: str):
+    blocked = [
+        "ignore previous",
+        "system prompt",
+        "reveal",
+        "bypass",
+        "act as admin"
+    ]
+
+    lower = text.lower()
+
+    if any(b in lower for b in blocked):
+        logger.warning(f"[BLOCKED] {text}")
+        return False
+
+    return True
+
+
+def check_rate_limit(user_id: str):
+    now = time.time()
+
+    if user_id in rate_limit_store:
+        if now - rate_limit_store[user_id] < 1:
+            return False
+
+    rate_limit_store[user_id] = now
+    return True
+
+# =============================
+# SMART ENGINE
+# =============================
+
 FOLLOW_UPS = [
-    "I can also suggest suitable products if needed.",
-    "Let me know if you want product recommendations.",
-    "I can help you choose the right products for this issue.",
+    "Let me know if you'd like product recommendations.",
+    "I can suggest the best products for this issue.",
     None
 ]
 
-# Safe reply generation
+def detect_crop(msg):
+    if "rice" in msg:
+        return "rice"
+    if "wheat" in msg:
+        return "wheat"
+    if "cotton" in msg:
+        return "cotton"
+    return "crop"
 
-# =============================
-# GENERATE SMART REPLY
-# =============================
 
-def generate_smart_reply(user_message: str) -> str:
-    msg = user_message.lower()
+def generate_reply(msg):
+    msg_lower = msg.lower()
+    crop = detect_crop(msg_lower)
 
-    # Pest problems
-    if any(word in msg for word in ["pest", "insect", "bug", "worms"]):
+    # Pest
+    if any(w in msg_lower for w in ["pest", "insect", "bug", "worms"]):
         return (
-            "It seems like your crop is affected by pests. "
-            "I recommend inspecting leaves for damage and using a targeted insecticide. "
-            "Early intervention can prevent major crop loss."
+            f"Your {crop} crop may be affected by pest activity.\n\n"
+            "We recommend AgroAsian PestX for effective control.\n"
+            "Usage: 2ml per liter of water.\n\n"
+            "Inspect leaves regularly and act early to prevent crop loss."
         )
 
-    # Fertilizer issues
-    elif any(word in msg for word in ["fertilizer", "nutrient", "growth", "yield"]):
+    # Fungus
+    if any(w in msg_lower for w in ["fungus", "fungal", "spots", "disease"]):
         return (
-            "For better crop growth, using a balanced fertilizer is important. "
-            "Make sure your soil has adequate nitrogen, phosphorus, and potassium. "
-            "Soil testing can help determine the exact requirement."
+            f"Your {crop} crop may be facing a fungal issue.\n\n"
+            "We recommend AgroAsian FungiStop.\n"
+            "Usage: 1.5ml per liter.\n\n"
+            "Ensure proper airflow and avoid excess moisture."
         )
 
-    # Fungal diseases
-    elif any(word in msg for word in ["fungus", "fungal", "disease", "spots"]):
-        return (
-            "This looks like a fungal issue. Reduce excess moisture and ensure proper air circulation. "
-            "Applying a fungicide early can help control the spread."
-        )
+    return (
+        "I understand you're facing a crop issue.\n"
+        "Please share more details so I can guide you better."
+    )
 
-    # Weed issues
-    elif any(word in msg for word in ["weed", "unwanted plants"]):
-        return (
-            "Weeds compete with crops for nutrients and water. "
-            "Using a selective herbicide or manual removal can help manage them effectively."
-        )
 
-    # Irrigation / water
-    elif any(word in msg for word in ["water", "irrigation", "dry", "moisture"]):
-        return (
-            "Proper irrigation is key to healthy crops. "
-            "Avoid both overwatering and drought stress. "
-            "Check soil moisture regularly before watering."
-        )
+def get_recommendations(msg):
+    msg = msg.lower()
+    results = []
 
-    # Default intelligent fallback
-    else:
-        return (
-            "I understand you're facing an issue with your crops. "
-            "Could you provide more details about the symptoms or crop type? "
-            "I'll help you with the best possible solution."
-        )
+    for key in PRODUCTS:
+        if key in msg:
+            results.extend(PRODUCTS[key])
+
+    return results[:3]
+
 # =============================
 # CONVERSATION MANAGER
 # =============================
 
 class ConversationManager:
-    def __init__(self, customer_id: str, channel: str = "web"):
+    def __init__(self, customer_id):
         self.customer_id = customer_id
-        self.channel = channel
-        self.conversation_id = f"{customer_id}_{int(datetime.now().timestamp())}"
+        self.conversation_id = f"{customer_id}_{int(time.time())}"
         self.messages = []
-        self.created_at = datetime.now()
 
-    def add_message(self, role, content):
-        self.messages.append({
-            "role": role,
-            "content": content,
-            "timestamp": datetime.now().isoformat()
-        })
+    def process(self, message):
+        self.messages.append({"role": "user", "content": message})
 
-    def get_recommendations(self, user_message):
-        msg = user_message.lower()
-        recs = []
+        base = generate_reply(message)
+        recs = get_recommendations(message)
 
-        for keyword, items in PRODUCTS.items():
-            if keyword in msg:
-                recs.extend(items)
+        follow = (
+            "I've also found some products that might help."
+            if recs else random.choice(FOLLOW_UPS)
+        )
 
-        return recs[:3]
+        final = base if not follow else f"{base}\n\n{follow}"
 
-    def get_claude_response(self, user_message: str):
-        self.add_message("user", user_message)
-
-        # Try Claude API
-        if client:
-            try:
-                response = client.messages.create(
-                    model="claude-3-5-sonnet-20241022",
-                    max_tokens=500,
-                    system=SYSTEM_PROMPT,
-                    messages=[
-                        {"role": m["role"], "content": m["content"]}
-                        for m in self.messages
-                    ]
-                )
-
-                text = response.content[0].text
-                self.add_message("assistant", text)
-                return text
-
-            except Exception as e:
-                logger.error(f"Claude API error: {e}")
-
-        # Fallback
-        try:
-            base_reply = generate_smart_reply(user_message)
-        except Exception as e:
-            logger.error(f"Fallback error: {e}")
-            base_reply = "I'm here to help with your crops."
-
-        recs = self.get_recommendations(user_message)
-
-        if recs:
-            follow_up = "I've also found some products that might help."
-        else:
-            follow_up = random.choice(FOLLOW_UPS)
-
-        fallback = base_reply if not follow_up else f"{base_reply}\n\n{follow_up}"
-
-        self.add_message("assistant", fallback)
-        return fallback
+        self.messages.append({"role": "assistant", "content": final})
+        return final, recs
 
 # =============================
 # ROUTES
@@ -211,116 +183,54 @@ class ConversationManager:
 def root():
     return {"status": "API running"}
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
 @app.post("/api/conversations")
-def create_conversation(customer_id: str, channel: str = "web"):
-    try:
-        # Prevent memory overflow
-        if len(conversations) >= MAX_CONVERSATIONS:
-            oldest = next(iter(conversations))
-            del conversations[oldest]
+def create_conversation(customer_id: str):
 
-        conv = ConversationManager(customer_id, channel)
-        conversations[conv.conversation_id] = conv
+    if len(conversations) >= MAX_CONVERSATIONS:
+        conversations.pop(next(iter(conversations)))
 
-        logger.info(f"[NEW] {conv.conversation_id}")
+    conv = ConversationManager(customer_id)
+    conversations[conv.conversation_id] = conv
 
-        return {
-            "conversation_id": conv.conversation_id,
-            "customer_id": customer_id,
-            "channel": channel
-        }
+    logger.info(f"[NEW] {conv.conversation_id}")
 
-    except Exception as e:
-        logger.error(f"Conversation error: {e}")
-        raise HTTPException(status_code=500, detail="Conversation creation failed")
+    return {"conversation_id": conv.conversation_id}
+
 
 @app.post("/api/chat")
 def chat(req: ChatRequest):
+
+    # 🔒 Security checks
+    if not sanitize_input(req.message):
+        return {
+            "reply": "Sorry, I can't process that request.",
+            "recommendations": []
+        }
+
+    if not check_rate_limit(req.conversation_id):
+        return {
+            "reply": "You're sending messages too quickly.",
+            "recommendations": []
+        }
+
+    if req.conversation_id not in conversations:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    conv = conversations[req.conversation_id]
+
     try:
-        if not req.message or not req.message.strip():
-            raise HTTPException(status_code=400, detail="Empty message")
-
-        if req.conversation_id not in conversations:
-            raise HTTPException(status_code=404, detail="Conversation not found")
-
-        conv = conversations[req.conversation_id]
+        reply, recs = conv.process(req.message)
 
         logger.info(f"[CHAT] {req.conversation_id}: {req.message}")
-
-        try:
-            reply = conv.get_claude_response(req.message)
-        except Exception as e:
-            logger.error(f"AI failure: {e}")
-            reply = f"You said: {req.message}"
-
-        recs = conv.get_recommendations(req.message)
 
         return {
             "reply": reply,
             "recommendations": recs
         }
 
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"Server error: {e}")
+        logger.error(f"[ERROR] {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
-
-# =============================
-# WEBSOCKET
-# =============================
-
-@app.websocket("/ws/chat/{conversation_id}")
-async def websocket_chat(websocket: WebSocket, conversation_id: str):
-    await websocket.accept()
-
-    if conversation_id not in conversations:
-        await websocket.send_json({"error": "Conversation not found"})
-        await websocket.close()
-        return
-
-    conv = conversations[conversation_id]
-
-    try:
-        while True:
-            data = await websocket.receive_text()
-
-            try:
-                payload = json.loads(data)
-            except json.JSONDecodeError:
-                await websocket.send_json({"error": "Invalid JSON"})
-                continue
-
-            msg = payload.get("message", "")
-
-            if not msg.strip():
-                await websocket.send_json({"error": "Empty message"})
-                continue
-
-            try:
-                reply = conv.get_claude_response(msg)
-            except Exception as e:
-                logger.error(f"AI error: {e}")
-                reply = f"You said: {msg}"
-
-            recs = conv.get_recommendations(msg)
-
-            await websocket.send_json({
-                "reply": reply,
-                "recommendations": recs
-            })
-
-    except WebSocketDisconnect:
-        logger.info(f"Disconnected: {conversation_id}")
-
-    except Exception as e:
-        logger.error(f"WebSocket error: {e}")
-        await websocket.send_json({"error": "Internal server error"})
-        await websocket.close()
 
 # =============================
 # RUN
@@ -328,4 +238,4 @@ async def websocket_chat(websocket: WebSocket, conversation_id: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000)+
