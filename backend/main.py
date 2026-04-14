@@ -96,6 +96,9 @@ else:
 # Final response
 fallback = base_reply if not follow_up else f"{base_reply}\n\n{follow_up}"
 
+self.add_message("assistant", fallback)
+return fallback
+
 # =============================
 # GENERATE SMART REPLY
 # =============================
@@ -188,7 +191,8 @@ class ConversationManager:
 
         # fallback (safe)
         fallback = f"{generate_smart_reply(user_message)}\n\nLet me know if you'd like product suggestions."
-        self.add_message("assistant", fallback) return fallback
+        self.add_message("assistant", fallback)
+        return fallback
 
     def get_recommendations(self, user_message):
         msg = user_message.lower()
