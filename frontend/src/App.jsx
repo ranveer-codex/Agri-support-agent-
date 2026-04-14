@@ -10,8 +10,6 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState(null);
-  const websocketRef = useRef(null);
-  const messagesEndRef = useRef(null);
 
   useEffect(() => {
     const initConversation = async () => {
@@ -61,13 +59,7 @@ export default function App() {
         setConnected(false);
         setTimeout(connectWebSocket, 3000);
       };
-      websocketRef.current = ws;
-    };
-    connectWebSocket();
-    return () => {
-      if (websocketRef.current) websocketRef.current.close();
-    };
-  }, [conversationId]);
+ 
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -75,18 +67,46 @@ export default function App() {
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!input.trim() || !connected || isLoading) return;
+    if (!input.trim() || isLoading) return;
     const userMessage = input.trim();
     setInput('');
     setIsLoading(true);
     setError(null);
-    setMessages(prev => [...prev, {role: 'user', content: userMessage, timestamp: new Date().toISOString()}]);
-    if (websocketRef.current && websocketRef.current.readyState === WebSocket.OPEN) {
-      websocketRef.current.send(JSON.stringify({ message: userMessage }));
-    } else {
-      setError('Connection lost. Reconnecting...');
-      setIsLoading(false);
+    setMessages(prev => [
+      ...prev, 
+      {
+        role: 'user', 
+        content: userMessage, 
+        timestamp: new Date().toISOString()
+      }
+    ]);
+
+    try {
+  const response = await fetch(`${API_BASE}/api/chat`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ message: userMessage })
+  });
+
+  const data = await response.json();
+
+  setMessages(prev => [
+    ...prev,
+    {
+      role: 'assistant',
+      content: data.reply,
+      timestamp: new Date().toISOString()
     }
+  ]);
+
+} catch (err) {
+  console.error(err);
+  setError("Failed to connect to server");
+}
+
+setIsLoading(false);
   };
 
   return (
@@ -95,7 +115,7 @@ export default function App() {
         <div className="chat-header">
           <div className="header-content">
             <h1>Agrochemical Support</h1>
-            <p className="status">{connected ? '🟢 Online' : '🔴 Offline'}</p>
+            <p className="status">{error ? '🔴 error' : '🟢 Ready'}</p>
           </div>
         </div>
         <div className="messages-area">
