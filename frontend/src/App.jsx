@@ -8,7 +8,6 @@ export default function App() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -39,10 +38,11 @@ export default function App() {
       });
 
       const data = await response.json();
+      console.log("API RESPONSE:", data);
 
       setMessages(prev => [
         ...prev,
-        { role: 'assistant', content: data.reply }
+        { role: 'assistant', content: data.reply || JSON.stringify(data) }
       ]);
 
     } catch (err) {
