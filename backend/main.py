@@ -150,7 +150,13 @@ def root():
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
     try:
-        return {"reply": f"You said: {req.message}"}
+        conv = conversationManager("temp_user")
+        response = conv.get_claude_response(req.message)
+
+        return {
+            "reply": response,
+            "recommendation": conv.get_recommendations(req.message)
+        }
     except Exception as e:
         return {"error": str(e)}
 
