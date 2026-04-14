@@ -6,6 +6,7 @@ import logging
 import os
 import json
 from dotenv import load_dotenv
+import random
 
 # =============================
 # INITIAL SETUP
@@ -68,6 +69,86 @@ class ChatRequest(BaseModel):
     conversation_id: str
 
 # =============================
+# GENERATE SMART REPLY
+# =============================
+FOLLOW_UPS = [
+    "I can also suggest suitable products if needed.",
+    "Let me know if you want product recommendations.",
+    "I can help you choose the right products for this issue.",
+    None
+]
+
+# Safe reply generation
+try:
+    base_reply = generate_smart_reply(user_message)
+except Exception as e:
+    logger.error(f"Fallback generation error: {e}")
+    base_reply = "I'm here to help with your crop issues. Could you provide more details?"
+
+# Context-aware follow-up
+recs = conv.get_recommendations(user_message)
+
+if recs:
+    follow_up = "I've also found some products that might help."
+else:
+    follow_up = random.choice(FOLLOW_UPS)
+
+# Final response
+fallback = base_reply if not follow_up else f"{base_reply}\n\n{follow_up}"
+
+# =============================
+# GENERATE SMART REPLY
+# =============================
+
+def generate_smart_reply(user_message: str) -> str:
+    msg = user_message.lower()
+
+    # Pest problems
+    if any(word in msg for word in ["pest", "insect", "bug", "worms"]):
+        return (
+            "It seems like your crop is affected by pests. "
+            "I recommend inspecting leaves for damage and using a targeted insecticide. "
+            "Early intervention can prevent major crop loss."
+        )
+
+    # Fertilizer issues
+    elif any(word in msg for word in ["fertilizer", "nutrient", "growth", "yield"]):
+        return (
+            "For better crop growth, using a balanced fertilizer is important. "
+            "Make sure your soil has adequate nitrogen, phosphorus, and potassium. "
+            "Soil testing can help determine the exact requirement."
+        )
+
+    # Fungal diseases
+    elif any(word in msg for word in ["fungus", "fungal", "disease", "spots"]):
+        return (
+            "This looks like a fungal issue. Reduce excess moisture and ensure proper air circulation. "
+            "Applying a fungicide early can help control the spread."
+        )
+
+    # Weed issues
+    elif any(word in msg for word in ["weed", "unwanted plants"]):
+        return (
+            "Weeds compete with crops for nutrients and water. "
+            "Using a selective herbicide or manual removal can help manage them effectively."
+        )
+
+    # Irrigation / water
+    elif any(word in msg for word in ["water", "irrigation", "dry", "moisture"]):
+        return (
+            "Proper irrigation is key to healthy crops. "
+            "Avoid both overwatering and drought stress. "
+            "Check soil moisture regularly before watering."
+        )
+
+    # Default intelligent fallback
+    else:
+        return (
+            "I understand you're facing an issue with your crops. "
+            "Could you provide more details about the symptoms or crop type? "
+            "I'll help you with the best possible solution."
+        )
+# =============================
 # CONVERSATION MANAGER
 # =============================
 
@@ -106,9 +187,8 @@ class ConversationManager:
                 logger.error(f"Claude API error: {e}")
 
         # fallback (safe)
-        fallback = f"You said: {user_message}"
-        self.add_message("assistant", fallback)
-        return fallback
+        fallback = f"{generate_smart_reply(user_message)}\n\nLet me know if you'd like product suggestions."
+        self.add_message("assistant", fallback) return fallback
 
     def get_recommendations(self, user_message):
         msg = user_message.lower()
